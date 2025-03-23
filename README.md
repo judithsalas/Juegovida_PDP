@@ -1,6 +1,6 @@
 # Juego de la Vida de Conway - Versión Paralela con Cola de Mensajes
 
-Este proyecto es una versión mejorada y paralelizada del **Juego de la Vida de Conway**, programado en Python. Incorpora varios conceptos de **Programación Paralela y Distribuida (PPD)**, incluyendo **memoria compartida**, **sincronización mediante colas de mensajes**, y **análisis de rendimiento**. Permite guardar y cargar estados de la simulación, así como generar estadísticas detalladas.
+Este proyecto es una versión del **Juego de la Vida de Conway**, programado en Python. Incorpora varios conceptos de **Programación Paralela y Distribuida (PPD)**, incluyendo **memoria compartida**, **sincronización mediante colas de mensajes**, y **análisis de rendimiento**. Permite guardar y cargar estados de la simulación, así como generar estadísticas detalladas.
 
 ## Características Principales
 
