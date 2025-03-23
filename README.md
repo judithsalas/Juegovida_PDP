@@ -1,58 +1,64 @@
-# Juego de la Vida de Conway - Versión Paralela
+# Juego de la Vida de Conway - Versión Paralela con Cola de Mensajes
 
-Este proyecto es una implementación paralela del **Juego de la Vida de Conway** usando Python y el módulo `multiprocessing`. Ha sido desarrollado con mejoras funcionales y de rendimiento que lo diferencian de versiones básicas, incluyendo estadísticas, guardado/carga de estados y personalización del entorno.
+Este proyecto es una versión mejorada y paralelizada del **Juego de la Vida de Conway**, programado en Python. Incorpora varios conceptos de **Programación Paralela y Distribuida (PPD)**, incluyendo **memoria compartida**, **sincronización mediante colas de mensajes**, y **análisis de rendimiento**. Permite guardar y cargar estados de la simulación, así como generar estadísticas detalladas.
 
-## Características Destacadas
+## Características Principales
 
 ### Ejecución Paralela
-- La matriz se divide en bloques y cada proceso actualiza una parte.
-- Sincronización entre procesos usando barreras.
-- Aceleración en matrices grandes (por defecto 50x50, escalable a 500x500).
+- Usa `multiprocessing.Process` para ejecutar 4 procesos en paralelo.
+- Cada proceso gestiona una porción de la matriz (división por filas).
 
-### Estadísticas de Simulación
-- Cuenta células vivas por generación.
-- Mide tiempo de ejecución por generación.
-- Exporta los datos a un archivo `estadisticas.csv` para análisis.
+### Sincronización por Cola de Mensajes
+- Cada proceso cuenta las **células vivas en su bloque** y envía el dato al proceso principal mediante una **`multiprocessing.Queue`**.
+- El proceso principal **recibe los conteos** y suma el total, generando estadísticas de forma segura y sincronizada.
 
 ### Guardar y Cargar Estado
-- Guarda el estado final de la simulación como `estado.npy`.
-- Permite cargar el estado guardado para continuar la simulación o comparar resultados.
+- El estado final de la simulación se guarda como archivo binario `estado.npy`.
+- Puedes cargar este estado en futuras simulaciones.
 
-### Personalización del Entorno Inicial
+### Estadísticas de Simulación
+- Se mide el número total de **células vivas por generación**.
+- Se mide el **tiempo de ejecución por generación**.
+- Los datos se exportan automáticamente a `estadisticas.csv`.
+
+### Configuración Inicial Personalizada
 Al iniciar el programa, puedes elegir:
 1. Estado aleatorio.
 2. Cargar estado desde archivo (`estado.npy`).
-3. Configuración manual introduciendo coordenadas de células vivas.
+3. Introducir coordenadas de células vivas manualmente.
+
+## Archivos Generados
+| Archivo             | Descripción                                          |
+|---------------------|------------------------------------------------------|
+| `estado.npy`        | Matriz binaria del estado final (formato NumPy)      |
+| `estadisticas.csv`  | Células vivas y tiempo por generación (CSV)         |
 
 ## Requisitos
 - Python 3.8+
-- Módulos: `numpy`, `pandas`
+- Librerías: `numpy`, `pandas`
 
 Instalación:
 ```bash
 pip install numpy pandas
 ```
 
-## Ejecución
+## Ejecución del Programa
 ```bash
 python juego_vida.py
 ```
 
-### Flujo General:
-1. Selecciona opción de entorno inicial.
-2. Visualiza la evolución de la matriz (consola).
-3. Al finalizar:
-   - Se guarda `estado.npy` (estado final).
-   - Se guarda `estadisticas.csv` (datos de simulación).
+### Flujo:
+1. Selecciona opción de configuración.
+2. Se inicia la simulación en consola.
+3. Al finalizar, se generan `estado.npy` y `estadisticas.csv`.
 
-## Archivos Generados
-- `estado.npy`: Matriz del estado final.
-- `estadisticas.csv`: Datos por generación (células vivas, tiempo).
+## Conceptos de Programación Paralela Aplicados
+- **Decomposición de dominio**: División de la matriz por filas.
+- **Memoria compartida**: Matrices compartidas entre procesos.
+- **Cola de mensajes**: Sincronización segura y eficiente para enviar datos.
+- **Medición de rendimiento**: Tiempo por generación y total.
+- **Persistencia de datos**: Guardado de estado para futuras simulaciones.
 
-## Ideas Futuras
-- Visualización gráfica con `pygame` o `matplotlib`.
-- Exportar estados intermedios.
-- Carga/guardado con nombres personalizados.
-- Multi-mundos conectados o con ruido aleatorio.
-
-
+## Notas Adicionales
+- El archivo `estado.npy` no es legible directamente; puede cargarse en Python o convertirse a `.txt` o `.csv` si se desea.
+- Puedes modificar el tamaño de la matriz y el número de procesos en las constantes al inicio del código.
