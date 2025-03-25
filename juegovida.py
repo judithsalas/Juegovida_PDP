@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 import time
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
+import os
 
 # --- Configuración ---
 FILAS = 20
@@ -112,6 +113,9 @@ class JuegoVidaGUI:
         self.btn_iniciar = tk.Button(root, text="▶ Iniciar Simulación", command=self.toggle_simulacion)
         self.btn_iniciar.pack(pady=5)
 
+        self.btn_cargar = tk.Button(root, text="Cargar Patrón desde Archivo", command=self.cargar_patron)
+        self.btn_cargar.pack(pady=5)
+
         self.canvas = tk.Canvas(root, width=COLUMNAS*TAM_CELDA, height=FILAS*TAM_CELDA, bg='white')
         self.canvas.pack(pady=10)
 
@@ -219,6 +223,50 @@ class JuegoVidaGUI:
     def guardar_estado(self):
         np.save(ARCHIVO_ESTADO, self.matriz)
         messagebox.showinfo("Guardado", f"Estado guardado en '{ARCHIVO_ESTADO}'")
+
+    def cargar_patron(self):
+        archivo = filedialog.askopenfilename(
+            title="Seleccionar archivo de patrón",
+            filetypes=[("Archivos .npy", "*.npy"), ("Archivos .csv", "*.csv")]
+        )
+        if not archivo:
+            return
+
+        try:
+            if archivo.endswith('.npy'):
+                patron = np.load(archivo)
+            elif archivo.endswith('.csv'):
+                patron = np.loadtxt(archivo, delimiter=',', dtype=np.int8)
+            else:
+                messagebox.showerror("Error", "Formato de archivo no compatible.")
+                return
+
+            if not np.isin(patron, [0, 1]).all():
+                messagebox.showerror("Error", "El patrón debe contener solo 0 y 1.")
+                return
+
+            pf, pc = patron.shape
+            if pf > FILAS or pc > COLUMNAS:
+                messagebox.showerror("Error", "El patrón es demasiado grande para el tablero.")
+                return
+
+            matriz = np.zeros((FILAS, COLUMNAS), dtype=np.int8)
+            inicio_fila = (FILAS - pf) // 2
+            inicio_col = (COLUMNAS - pc) // 2
+            matriz[inicio_fila:inicio_fila+pf, inicio_col:inicio_col+pc] = patron
+
+            self.matriz = matriz
+            self.dibujar_matriz()
+            self.running = False
+            self.pausado = False
+            self.generation_index = 0
+            self.historial_vivas = []
+            self.tiempos_generacion = []
+            self.btn_iniciar.config(text="▶ Iniciar Simulación")
+            messagebox.showinfo("Éxito", f"Patrón cargado desde: {os.path.basename(archivo)}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo cargar el patrón:\n{e}")
 
 # --- Ejecutar ---
 if __name__ == '__main__':
