@@ -2,67 +2,31 @@ import multiprocessing
 import numpy as np
 import pandas as pd
 import time
-import os
+import tkinter as tk
+from tkinter import messagebox
 
-# --- Configuración del Juego de la Vida ---
-FILAS = 50
-COLUMNAS = 50
+# --- Configuración ---
+FILAS = 20
+COLUMNAS = 20
 GENERACIONES = 100
 PROCESOS = 4
+TAM_CELDA = 20
 ARCHIVO_ESTADO = "estado.npy"
 ARCHIVO_ESTADISTICAS = "estadisticas.csv"
-
-# --- Inicialización de la matriz ---
-def inicializar_matriz():
-    print("\n== JUEGO DE LA VIDA - OPCIONES INICIALES ==")
-    print("1 - Estado aleatorio")
-    print("2 - Cargar estado desde archivo")
-    print("3 - Configurar manualmente")
-    opcion = input("\nSelecciona una opción: ")
-
-    if opcion == '1':  # Aleatorio
-        return np.random.choice([0, 1], size=(FILAS, COLUMNAS))
-    elif opcion == '2':  # Cargar desde archivo
-        if os.path.exists(ARCHIVO_ESTADO):
-            return np.load(ARCHIVO_ESTADO)
-        else:
-            print(f"\n⚠ No se encontró '{ARCHIVO_ESTADO}', generando aleatoria.")
-            return np.random.choice([0, 1], size=(FILAS, COLUMNAS))
-    elif opcion == '3':  # Manual
-        matriz = np.zeros((FILAS, COLUMNAS), dtype=np.int8)
-        print("\nIntroduce coordenadas (fila,col) de células vivas, 'fin' para terminar:")
-        while True:
-            entrada = input("Coordenada: ")
-            if entrada.lower() == 'fin':
-                break
-            try:
-                f, c = map(int, entrada.strip().split(','))
-                if 0 <= f < FILAS and 0 <= c < COLUMNAS:
-                    matriz[f][c] = 1
-            except:
-                print("⚠ Formato inválido. Usa: fila,col")
-        return matriz
-    else:
-        print("\n⚠ Opción inválida. Generando aleatoria.")
-        return np.random.choice([0, 1], size=(FILAS, COLUMNAS))
 
 # --- Contar vecinos vivos ---
 def contar_vecinos(matriz, fila, col):
     vecinos = [(-1, -1), (-1, 0), (-1, 1),
                (0, -1),          (0, 1),
                (1, -1), (1, 0), (1, 1)]
-    conteo = 0
-    for dx, dy in vecinos:
-        nf, nc = (fila + dx) % FILAS, (col + dy) % COLUMNAS
-        conteo += matriz[nf][nc]
-    return conteo
+    return sum(matriz[(fila+dx)%FILAS][(col+dy)%COLUMNAS] for dx, dy in vecinos)
 
 # --- Proceso por bloque ---
 def actualizar_bloque(inicio_fila, fin_fila, matriz_compartida, nueva_matriz_compartida, barrera, queue):
     matriz = np.frombuffer(matriz_compartida.get_obj(), dtype=np.int8).reshape((FILAS, COLUMNAS))
     nueva_matriz = np.frombuffer(nueva_matriz_compartida.get_obj(), dtype=np.int8).reshape((FILAS, COLUMNAS))
 
-    for _ in range(GENERACIONES):
+    while True:
         celulas_vivas_bloque = 0
         for i in range(inicio_fila, fin_fila):
             for j in range(COLUMNAS):
@@ -75,9 +39,7 @@ def actualizar_bloque(inicio_fila, fin_fila, matriz_compartida, nueva_matriz_com
                     nueva_matriz[i][j] = matriz[i][j]
                 celulas_vivas_bloque += nueva_matriz[i][j]
 
-        # Enviar el conteo por la cola
         queue.put(celulas_vivas_bloque)
-
         barrera.wait()
 
         if inicio_fila == 0:
@@ -85,69 +47,182 @@ def actualizar_bloque(inicio_fila, fin_fila, matriz_compartida, nueva_matriz_com
 
         barrera.wait()
 
-# --- Mostrar la matriz ---
-def imprimir_matriz(matriz):
-    os.system('cls' if os.name == 'nt' else 'clear')
-    for fila in matriz:
-        print(''.join(['█' if celula else ' ' for celula in fila]))
-    print("\n" + "="*COLUMNAS)
+# --- Inicializar patrón en el centro ---
+def inicializar_matriz(tipo):
+    matriz = np.zeros((FILAS, COLUMNAS), dtype=np.int8)
 
-# --- Main ---
+    patrones = {
+        "Planeador": np.array([[0, 1, 0], [0, 0, 1], [1, 1, 1]]),
+        "Explosionador": np.array([[0, 1, 0], [1, 1, 1], [1, 0, 1], [0, 1, 0]]),
+        "Pentaminó R": np.array([[0, 1, 1], [1, 1, 0], [0, 1, 0]]),
+        "Nave Ligera (LWSS)": np.array([
+            [0, 1, 1, 1, 1],
+            [1, 0, 0, 0, 1],
+            [0, 0, 0, 0, 1],
+            [1, 0, 0, 1, 0]
+        ]),
+        "Pulsar": np.array([
+            [0,0,1,1,1,0,0],
+            [0,0,0,0,0,0,0],
+            [0,0,1,1,1,0,0]
+        ]),
+        "Cañón de Glider": np.array([
+            [0,0,0,0,1,0,0,0,0],
+            [0,0,0,0,0,1,0,0,0],
+            [0,0,1,1,0,1,1,0,0],
+            [0,0,1,1,0,1,1,0,0],
+            [0,0,0,0,1,0,0,0,0]
+        ])
+    }
+
+    if tipo == "Aleatorio":
+        return np.random.choice([0, 1], size=(FILAS, COLUMNAS))
+
+    patron = patrones.get(tipo)
+    if patron is not None:
+        pf, pc = patron.shape
+        inicio_fila = (FILAS - pf) // 2
+        inicio_col = (COLUMNAS - pc) // 2
+        matriz[inicio_fila:inicio_fila+pf, inicio_col:inicio_col+pc] = patron
+        return matriz
+
+    return matriz
+
+# --- GUI del Juego de la Vida ---
+class JuegoVidaGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Juego de la Vida")
+
+        self.running = False
+        self.pausado = False
+        self.generation_index = 0
+        self.historial_vivas = []
+        self.tiempos_generacion = []
+
+        self.opciones = [
+            "Aleatorio", "Planeador", "Explosionador", "Pentaminó R",
+            "Nave Ligera (LWSS)", "Pulsar", "Cañón de Glider"
+        ]
+        self.tipo_simulacion = tk.StringVar(value=self.opciones[0])
+
+        self.menu_opciones = tk.OptionMenu(root, self.tipo_simulacion, *self.opciones)
+        self.menu_opciones.pack(pady=5)
+
+        self.btn_iniciar = tk.Button(root, text="▶ Iniciar Simulación", command=self.toggle_simulacion)
+        self.btn_iniciar.pack(pady=5)
+
+        self.canvas = tk.Canvas(root, width=COLUMNAS*TAM_CELDA, height=FILAS*TAM_CELDA, bg='white')
+        self.canvas.pack(pady=10)
+
+        self.btn_guardar = tk.Button(root, text="Guardar Estado", command=self.guardar_estado)
+        self.btn_guardar.pack(side='left', padx=10, pady=10)
+
+        self.btn_salir = tk.Button(root, text="Salir", command=root.destroy)
+        self.btn_salir.pack(side='right', padx=10, pady=10)
+
+        self.tipo_simulacion.trace_add("write", lambda *_: self.actualizar_preview())
+
+        self.matriz = inicializar_matriz(self.tipo_simulacion.get())
+        self.dibujar_matriz()
+        self.actualizar_preview()
+
+    def actualizar_preview(self):
+        self.matriz = inicializar_matriz(self.tipo_simulacion.get())
+        self.dibujar_matriz()
+        self.running = False
+        self.pausado = False
+        self.generation_index = 0
+        self.historial_vivas = []
+        self.tiempos_generacion = []
+        self.btn_iniciar.config(text="▶ Iniciar Simulación")
+
+    def dibujar_matriz(self):
+        self.canvas.delete("all")
+        for i in range(FILAS):
+            for j in range(COLUMNAS):
+                color = '#00CC66' if self.matriz[i][j] == 1 else 'white'
+                self.canvas.create_rectangle(
+                    j*TAM_CELDA, i*TAM_CELDA,
+                    (j+1)*TAM_CELDA, (i+1)*TAM_CELDA,
+                    fill=color, outline='gray')
+
+    def toggle_simulacion(self):
+        if not self.running:
+            self.running = True
+            self.pausado = False
+            self.btn_iniciar.config(text="⏸ Pausar Simulación")
+            self.simular()
+        elif not self.pausado:
+            self.pausado = True
+            self.btn_iniciar.config(text="▶ Reanudar Simulación")
+        else:
+            self.pausado = False
+            self.btn_iniciar.config(text="⏸ Pausar Simulación")
+            self.simular()
+
+    def simular(self):
+        self.matriz_compartida = multiprocessing.Array('b', FILAS * COLUMNAS)
+        self.nueva_matriz_compartida = multiprocessing.Array('b', FILAS * COLUMNAS)
+        matriz_np = np.frombuffer(self.matriz_compartida.get_obj(), dtype=np.int8).reshape((FILAS, COLUMNAS))
+        matriz_np[:, :] = self.matriz[:, :]
+
+        self.barrera = multiprocessing.Barrier(PROCESOS)
+        self.queue = multiprocessing.Queue()
+
+        self.procesos = []
+        filas_por_proceso = FILAS // PROCESOS
+
+        for i in range(PROCESOS):
+            inicio_fila = i * filas_por_proceso
+            fin_fila = (i + 1) * filas_por_proceso if i != PROCESOS - 1 else FILAS
+            p = multiprocessing.Process(target=actualizar_bloque,
+                                        args=(inicio_fila, fin_fila, self.matriz_compartida,
+                                              self.nueva_matriz_compartida, self.barrera, self.queue))
+            self.procesos.append(p)
+            p.start()
+
+        self.generar()
+
+    def generar(self):
+        if self.pausado or not self.running:
+            return
+
+        if self.generation_index >= GENERACIONES:
+            for p in self.procesos:
+                p.terminate()
+            self.running = False
+            self.btn_iniciar.config(text="▶ Iniciar Simulación")
+
+            df = pd.DataFrame({
+                'Generacion': list(range(1, self.generation_index + 1)),
+                'Celulas_vivas': self.historial_vivas,
+                'Tiempo_generacion': self.tiempos_generacion
+            })
+            df.to_csv(ARCHIVO_ESTADISTICAS, index=False)
+
+            messagebox.showinfo("Fin", f"Simulación completada.\nCSV guardado en {ARCHIVO_ESTADISTICAS}")
+            return
+
+        inicio_gen = time.time()
+        total_vivas = sum(self.queue.get() for _ in range(PROCESOS))
+        fin_gen = time.time()
+
+        self.historial_vivas.append(total_vivas)
+        self.tiempos_generacion.append(fin_gen - inicio_gen)
+
+        self.matriz = np.frombuffer(self.matriz_compartida.get_obj(), dtype=np.int8).reshape((FILAS, COLUMNAS)).copy()
+        self.dibujar_matriz()
+        self.generation_index += 1
+        self.root.after(100, self.generar)
+
+    def guardar_estado(self):
+        np.save(ARCHIVO_ESTADO, self.matriz)
+        messagebox.showinfo("Guardado", f"Estado guardado en '{ARCHIVO_ESTADO}'")
+
+# --- Ejecutar ---
 if __name__ == '__main__':
     multiprocessing.freeze_support()
-    matriz_inicial = inicializar_matriz()
-
-    matriz_compartida = multiprocessing.Array('b', FILAS * COLUMNAS)
-    nueva_matriz_compartida = multiprocessing.Array('b', FILAS * COLUMNAS)
-    matriz_np = np.frombuffer(matriz_compartida.get_obj(), dtype=np.int8).reshape((FILAS, COLUMNAS))
-    matriz_np[:, :] = matriz_inicial[:, :]
-
-    barrera = multiprocessing.Barrier(PROCESOS)
-    queue = multiprocessing.Queue()
-
-    procesos = []
-    filas_por_proceso = FILAS // PROCESOS
-
-    for i in range(PROCESOS):
-        inicio_fila = i * filas_por_proceso
-        fin_fila = (i + 1) * filas_por_proceso if i != PROCESOS - 1 else FILAS
-        p = multiprocessing.Process(target=actualizar_bloque,
-                                    args=(inicio_fila, fin_fila, matriz_compartida, nueva_matriz_compartida, barrera, queue))
-        procesos.append(p)
-        p.start()
-
-    celulas_vivas_historial = []
-    tiempos_generacion = []
-    inicio_total = time.time()
-
-    for _ in range(GENERACIONES):
-        inicio_gen = time.time()
-        imprimir_matriz(matriz_np)
-
-        total_vivas = 0
-        for _ in range(PROCESOS):
-            total_vivas += queue.get()
-
-        celulas_vivas_historial.append(total_vivas)
-        fin_gen = time.time()
-        tiempos_generacion.append(fin_gen - inicio_gen)
-        time.sleep(0.1)
-
-    for p in procesos:
-        p.join()
-
-    # Guardar estadísticas
-    df = pd.DataFrame({
-        'Generacion': list(range(1, GENERACIONES + 1)),
-        'Celulas_vivas': celulas_vivas_historial,
-        'Tiempo_generacion': tiempos_generacion
-    })
-    df.to_csv(ARCHIVO_ESTADISTICAS, index=False)
-
-    # Guardar estado final
-    np.save(ARCHIVO_ESTADO, matriz_np)
-
-    tiempo_total = time.time() - inicio_total
-    print(f"\n⏱ Tiempo total: {tiempo_total:.2f} segundos")
-    print(f" Estado final guardado en '{ARCHIVO_ESTADO}'")
-    print(f" Estadísticas guardadas en '{ARCHIVO_ESTADISTICAS}'")
+    root = tk.Tk()
+    app = JuegoVidaGUI(root)
+    root.mainloop()
